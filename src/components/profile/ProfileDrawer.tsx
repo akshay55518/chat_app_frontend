@@ -142,7 +142,7 @@ export default function ProfileDrawer({ conversation, isMe, onClose }: Props) {
             <div className="mt-1 flex items-center justify-center gap-1.5">
               <span className={`w-2 h-2 rounded-full ${profileData.online ? "bg-green-500" : "bg-gray-400"}`} />
               <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">
-                {profileData.online ? "Active Now" : "Last seen recently"}
+                {profileData.online ? "Active Now" : "profile"}
               </span>
             </div>
           </div>

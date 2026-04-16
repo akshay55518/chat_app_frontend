@@ -22,6 +22,7 @@ export default function ChatWindow({ conversation, onOpenProfile }: Props) {
     } catch { return {}; }
   });
   const [showWallpaperModal, setShowWallpaperModal] = useState(false);
+  const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set());
   const bottomRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
 
@@ -67,10 +68,26 @@ export default function ChatWindow({ conversation, onOpenProfile }: Props) {
     wsRef.current?.close();
     const ws = new WebSocket(API_ENDPOINTS.WS_CHAT(convId, token));
 
+    ws.onopen = () => {
+      console.log("[WS OPEN] Requesting initial status");
+      ws.send(JSON.stringify({ type: "ping" }));
+    };
+
     ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
         console.log("[WS RECEIVED]", data);
+
+        if (data.type === "user_status") {
+          setOnlineUsers((prev) => {
+            const next = new Set(prev);
+            if (data.status === "online") next.add(data.user);
+            else next.delete(data.user);
+            return next;
+          });
+          return;
+        }
+
         const newMsg: ApiMessage = {
           id: data.message_id || Date.now(),
           conversation: convId,
@@ -149,10 +166,15 @@ export default function ChatWindow({ conversation, onOpenProfile }: Props) {
     );
   }
 
+  // Calculate if the other participant is online
+  const otherParticipant = conversation?.participants.find(p => p.user !== user?.email);
+  const isOnline = otherParticipant ? onlineUsers.has(otherParticipant.user) : false;
+
   return (
     <div className="flex-1 flex flex-col bg-white relative">
       <ChatHeader
         conversation={conversation}
+        isOnline={isOnline}
         onOpenProfile={onOpenProfile}
         onSetWallpaper={() => setShowWallpaperModal(true)}
         onClearChat={handleClearChat}

@@ -1,17 +1,17 @@
 import { useState, useEffect, useRef } from "react";
 import { useAuth } from "../../context/AuthContext";
-import { API_ENDPOINTS } from "../../config/api";
 import type { Conversation } from "../../types/api";
 import { getConversationName, getInitials } from "../sidebar/ChatItem";
 
 interface Props {
   conversation: Conversation | null;
+  isOnline: boolean;
   onOpenProfile: () => void;
   onSetWallpaper: () => void;
   onClearChat: () => void;
 }
 
-export default function ChatHeader({ conversation, onOpenProfile, onSetWallpaper, onClearChat }: Props) {
+export default function ChatHeader({ conversation, isOnline, onOpenProfile, onSetWallpaper, onClearChat }: Props) {
   const { user } = useAuth();
   const [showMenu, setShowMenu] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -47,12 +47,21 @@ export default function ChatHeader({ conversation, onOpenProfile, onSetWallpaper
           {initials}
         </div>
         <div>
-          <p className="text-[15px] font-semibold text-gray-900">{name}</p>
-          <p className="text-xs text-gray-400">
-            {conversation.type === "group"
-              ? `${conversation.participants.length} members`
-              : conversation.participants.find((p) => p.user !== user?.email)?.user || ""}
-          </p>
+          <p className="text-[15px] font-semibold text-gray-900 leading-tight">{name}</p>
+          <div className="flex items-center gap-1.5 mt-0.5">
+            {isOnline ? (
+              <>
+                <div className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)] animate-pulse" />
+                <p className="text-[11px] font-bold text-emerald-600 uppercase tracking-tight">Active Now</p>
+              </>
+            ) : (
+              <p className="text-[11px] text-gray-400 font-medium truncate max-w-[200px]">
+                {conversation.type === "group"
+                  ? `${conversation.participants.length} members`
+                  : conversation.participants.find((p) => p.user !== user?.email)?.user || ""}
+              </p>
+            )}
+          </div>
         </div>
       </div>
 
