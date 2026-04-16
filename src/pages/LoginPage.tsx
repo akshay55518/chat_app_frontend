@@ -3,7 +3,8 @@ import styles from './LoginPage.module.css';
 
 import { API_ENDPOINTS } from '../config/api';
 
-export default function LoginPage({ onLogin }: { onLogin?: () => void }) {
+export default function LoginPage({ onLogin }: { onLogin?: (user: any, token: string) => void }) {
+
   const [activeTab, setActiveTab] = useState<'login' | 'create'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -37,7 +38,8 @@ export default function LoginPage({ onLogin }: { onLogin?: () => void }) {
         localStorage.setItem('accessToken', data.access);
         localStorage.setItem('refreshToken', data.refresh);
         
-        if (onLogin) onLogin();
+        if (onLogin) onLogin(data.user, data.access);
+
         
       } else {
         const res = await fetch(API_ENDPOINTS.REGISTER, {

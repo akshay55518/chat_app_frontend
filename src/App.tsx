@@ -15,30 +15,55 @@ export default function App() {
 
   const checkAuth = async () => {
     const token = localStorage.getItem('accessToken');
+    const storedUser = localStorage.getItem('user');
+
     if (!token) {
       setIsCheckingAuth(false);
       return;
     }
 
+    // If we have a stored user, show the app immediately while validating
+    if (storedUser) {
+      try {
+        setUser(JSON.parse(storedUser));
+        setIsAuthenticated(true);
+      } catch (e) {
+        // Stored user was malformed, ignore
+      }
+    }
+
+    // Validate token with the server
     try {
       const res = await fetch(API_ENDPOINTS.ME, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
+        headers: { 'Authorization': `Bearer ${token}` }
       });
       if (res.ok) {
         const userData = await res.json();
         setUser(userData);
+        localStorage.setItem('user', JSON.stringify(userData));
         setIsAuthenticated(true);
       } else {
+        // Token is invalid — clear everything
         localStorage.removeItem('accessToken');
         localStorage.removeItem('refreshToken');
+        localStorage.removeItem('user');
+        setUser(null);
+        setIsAuthenticated(false);
       }
     } catch (e) {
       console.error('Auth check failed', e);
+      // Keep the user logged in if it's a network error
     } finally {
       setIsCheckingAuth(false);
     }
+  };
+
+  const handleLogin = (userData: any, token: string) => {
+    // Store everything in localStorage
+    localStorage.setItem('accessToken', token);
+    localStorage.setItem('user', JSON.stringify(userData));
+    setUser(userData);
+    setIsAuthenticated(true);
   };
 
   if (isCheckingAuth) {
@@ -50,10 +75,7 @@ export default function App() {
   }
 
   if (!isAuthenticated) {
-    return <LoginPage onLogin={() => {
-      setIsCheckingAuth(true); // Re-run auth check to fetch user profile properly
-      checkAuth();
-    }} />;
+    return <LoginPage onLogin={handleLogin} />;
   }
 
   const token = localStorage.getItem('accessToken');

@@ -22,10 +22,16 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children, initialUser, token }: { children: React.ReactNode, initialUser: User | null, token: string | null }) {
   const [user, setUser] = useState<User | null>(initialUser);
 
+  useEffect(() => {
+    setUser(initialUser);
+  }, [initialUser]);
+
   const logout = () => {
     localStorage.removeItem("accessToken");
     localStorage.removeItem("refreshToken");
+    localStorage.removeItem("user");
     setUser(null);
+    window.location.reload(); // Force back to login screen
   };
 
   return (

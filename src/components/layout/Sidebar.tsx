@@ -1,20 +1,34 @@
+import type { Conversation } from "../../types/api";
 import ChatList from "../sidebar/ChatList";
 import SearchBar from "../sidebar/SearchBar";
 import UserProfile from "../sidebar/UserProfile";
 
-
 interface Props {
-  activeChat: string;
-  onSelectChat: (id: string) => void;
+  conversations: Conversation[];
+  isLoadingConversations: boolean;
+  activeChat: number | null;
+  onSelectConversation: (id: number) => void;
+  onSelectUser: (id: number) => void;
   onOpenMyProfile: () => void;
+  onNewChat: () => void;
+  isCreatingChat?: boolean;
 }
 
-export default function Sidebar({ activeChat, onSelectChat, onOpenMyProfile }: Props) {
+export default function Sidebar({
+  conversations,
+  isLoadingConversations,
+  activeChat,
+  onSelectConversation,
+  onSelectUser,
+  onOpenMyProfile,
+  onNewChat,
+  isCreatingChat,
+}: Props) {
   return (
     <div className="w-[320px] min-w-[320px] bg-[#eef2f0] flex flex-col border-r border-gray-200">
       <UserProfile onOpen={onOpenMyProfile} />
 
-      <SearchBar />
+      <SearchBar onSelectUser={onSelectUser} isCreating={isCreatingChat} />
 
       {/* Tabs */}
       <div className="flex px-3 gap-1 border-b border-gray-200">
@@ -32,11 +46,19 @@ export default function Sidebar({ activeChat, onSelectChat, onOpenMyProfile }: P
         ))}
       </div>
 
-      <ChatList activeChat={activeChat} onSelectChat={onSelectChat} />
+      <ChatList
+        conversations={conversations}
+        isLoading={isLoadingConversations}
+        activeChat={activeChat}
+        onSelectChat={onSelectConversation}
+      />
 
-      {/* New Message */}
+      {/* New Message button */}
       <div className="p-3">
-        <button className="w-full bg-[#1b6b50] text-white rounded-lg py-2.5 text-sm font-medium flex items-center justify-center gap-2">
+        <button
+          onClick={onNewChat}
+          className="w-full bg-[#1b6b50] text-white rounded-lg py-2.5 text-sm font-medium flex items-center justify-center gap-2 hover:bg-[#155840] transition-colors"
+        >
           <span className="text-lg leading-none">+</span> New Message
         </button>
       </div>

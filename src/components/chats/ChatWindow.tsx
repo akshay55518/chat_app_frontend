@@ -1,73 +1,129 @@
-import { useState, useRef, useEffect } from "react";
-import { messages as initialMessages } from "../../data/messages";
-import type { Message } from "../../data/messages";
+import { useState, useRef, useEffect, useCallback } from "react";
+import { useAuth } from "../../context/AuthContext";
+import { API_ENDPOINTS } from "../../config/api";
+import type { ApiMessage, Conversation } from "../../types/api";
 import ChatHeader from "./ChatHeader";
 import MessageBubble from "./MessageBubble";
 import MessageInput from "./MessageInput";
 
 interface Props {
-  activeChatId: string;
+  conversation: Conversation | null;
   onOpenProfile: () => void;
 }
 
-export default function ChatWindow({ activeChatId, onOpenProfile }: Props) {
-  const [chatMessages, setChatMessages] = useState<Record<string, Message[]>>(initialMessages);
+export default function ChatWindow({ conversation, onOpenProfile }: Props) {
+  const { token, user } = useAuth();
+  const [messages, setMessages] = useState<ApiMessage[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
   const [wallpapers, setWallpapers] = useState<Record<string, string>>(() => {
     try {
       const stored = localStorage.getItem("chatWallpapers");
       return stored ? JSON.parse(stored) : {};
-    } catch {
-      return {};
-    }
+    } catch { return {}; }
   });
-  const wallpaper = wallpapers[activeChatId] || "";
-  const [showWallpaperModal, setShowWallpaperModal] = useState<boolean>(false);
+  const [showWallpaperModal, setShowWallpaperModal] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const wsRef = useRef<WebSocket | null>(null);
 
+  const wallpaper = conversation ? (wallpapers[conversation.id] || "") : "";
+
+  // Fetch message history when conversation changes
+  useEffect(() => {
+    if (!conversation || !token) return;
+    setMessages([]);
+    fetchMessages(conversation.id);
+    connectWebSocket(conversation.id);
+
+    return () => {
+      wsRef.current?.close();
+    };
+  }, [conversation?.id, token]);
+
+  // Auto-scroll to bottom
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [chatMessages, activeChatId]);
+  }, [messages]);
 
-  const handleSend = (text: string) => {
-    const newMsg: Message = {
-      id: Date.now(),
-      text,
-      is_sender: true,
-      time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-      read: false,
-    };
-    setChatMessages((prev) => ({
-      ...prev,
-      [activeChatId]: [...(prev[activeChatId] ?? []), newMsg],
-    }));
+  const fetchMessages = async (convId: number) => {
+    setIsLoading(true);
+    try {
+      const res = await fetch(API_ENDPOINTS.MESSAGES(convId), {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data: ApiMessage[] = await res.json();
+        // API returns newest first, so reverse for display
+        setMessages(data.reverse());
+      }
+    } catch (err) {
+      console.error("Failed to load messages", err);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const currentMessages = chatMessages[activeChatId] ?? [];
+  const connectWebSocket = (convId: number) => {
+    if (!token) return;
+    wsRef.current?.close();
+    const ws = new WebSocket(API_ENDPOINTS.WS_CHAT(convId, token));
 
-  const handleSetWallpaper = () => {
-    setShowWallpaperModal(true);
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        console.log("[WS RECEIVED]", data);
+        const newMsg: ApiMessage = {
+          id: data.message_id || Date.now(),
+          conversation: convId,
+          sender: data.user,
+          type: "text",
+          content: data.message,
+          media_url: null,
+          created_at: data.created_at || new Date().toISOString(),
+        };
+        // Update messages state
+        setMessages((prev) => {
+          // Prevent duplicates if the message ID already exists
+          if (prev.some(m => m.id === newMsg.id)) return prev;
+          return [...prev, newMsg];
+        });
+      } catch (err) {
+        console.error("Failed to parse WS message", err);
+      }
+    };
+
+    ws.onerror = (err) => console.error("WebSocket error", err);
+    wsRef.current = ws;
+  };
+
+  const handleSend = async (text: string) => {
+    if (!conversation || !token) return;
+
+    console.log("[UI SENDING]", text);
+
+    // Broadcast via WebSocket for real-time and persistence
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ message: text }));
+    } else {
+      console.error("[WS ERROR] Socket not open");
+      // Optional: Add local error feedback here
+    }
   };
 
   const updateWallpaper = (url: string) => {
+    if (!conversation) return;
     const updated = { ...wallpapers };
-    if (url) {
-      updated[activeChatId] = url;
-    } else {
-      delete updated[activeChatId];
-    }
-    
+    if (url) updated[conversation.id] = url;
+    else delete updated[conversation.id];
     setWallpapers(updated);
     try {
       localStorage.setItem("chatWallpapers", JSON.stringify(updated));
     } catch (e) {
-      console.error("Failed to save wallpaper to local storage (file might be too large)", e);
-      alert("Image is too large to be saved permanently in your browser cache.");
+      alert("Image too large to save.");
     }
   };
 
-  const setPresetWallpaper = (url: string) => {
-    updateWallpaper(url);
-    setShowWallpaperModal(false);
+  const handleClearChat = () => {
+    if (confirm("Clear this chat locally?")) setMessages([]);
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -75,69 +131,80 @@ export default function ChatWindow({ activeChatId, onOpenProfile }: Props) {
     if (file) {
       const reader = new FileReader();
       reader.onloadend = () => {
-        if (reader.result) {
-          updateWallpaper(reader.result as string);
-          setShowWallpaperModal(false);
-        }
+        if (reader.result) { updateWallpaper(reader.result as string); setShowWallpaperModal(false); }
       };
       reader.readAsDataURL(file);
     }
   };
 
-  const handleClearChat = () => {
-    if (confirm("Are you sure you want to clear this chat?")) {
-      setChatMessages((prev) => ({ ...prev, [activeChatId]: [] }));
-    }
-  };
+  if (!conversation) {
+    return (
+      <div className="flex-1 flex items-center justify-center bg-[#f7faf8]">
+        <div className="text-center">
+          <div className="text-6xl mb-4">💬</div>
+          <h2 className="text-xl font-bold text-gray-700 mb-2">Welcome to the Chat</h2>
+          <p className="text-sm text-gray-400">Select a conversation or search for a user to get started</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="flex-1 flex flex-col bg-white">
-      <ChatHeader 
-        activeChatId={activeChatId} 
+    <div className="flex-1 flex flex-col bg-white relative">
+      <ChatHeader
+        conversation={conversation}
         onOpenProfile={onOpenProfile}
-        onSetWallpaper={handleSetWallpaper}
+        onSetWallpaper={() => setShowWallpaperModal(true)}
         onClearChat={handleClearChat}
       />
 
-      <div 
-        className={`flex-1 overflow-y-auto p-4 flex flex-col gap-3 ${!wallpaper ? 'bg-[#f7faf8]' : 'bg-cover bg-center'}`}
+      <div
+        className={`flex-1 overflow-y-auto p-4 flex flex-col gap-3 ${!wallpaper ? "bg-[#f7faf8]" : "bg-cover bg-center"}`}
         style={wallpaper ? { backgroundImage: `url(${wallpaper})` } : undefined}
       >
-        {/* <div className="self-center text-[11px] text-gray-400 bg-gray-200 px-3 py-1 rounded-full">
-          TODAY
-        </div> */}
-
-        {currentMessages.map((msg) => (
-          <MessageBubble key={msg.id} msg={msg} />
-        ))}
-
+        {isLoading ? (
+          <div className="flex-1 flex items-center justify-center">
+            <div className="w-6 h-6 border-2 border-[#1b6b50] border-t-transparent rounded-full animate-spin" />
+          </div>
+        ) : messages.length === 0 ? (
+          <div className="flex-1 flex items-center justify-center">
+            <p className="text-sm text-gray-400">No messages yet. Say hello! 👋</p>
+          </div>
+        ) : (
+          messages.map((msg) => <MessageBubble key={msg.id} msg={msg} />)
+        )}
         <div ref={bottomRef} />
       </div>
 
       <MessageInput onSend={handleSend} />
 
-      {/* Wallpaper Selection Modal */}
+      {/* Wallpaper Modal */}
       {showWallpaperModal && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40 animate-in fade-in">
-          <div className="bg-white rounded-2xl shadow-xl w-80 p-5 flex flex-col gap-4 animate-in zoom-in-95">
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-2xl shadow-xl w-80 p-5 flex flex-col gap-4">
             <div className="flex justify-between items-center">
               <h3 className="font-semibold text-gray-900">Set Background</h3>
-              <button onClick={() => setShowWallpaperModal(false)} className="text-gray-400 hover:text-gray-600 font-bold">×</button>
+              <button onClick={() => setShowWallpaperModal(false)} className="text-gray-400 hover:text-gray-600 font-bold text-xl">×</button>
             </div>
-            
             <div>
               <p className="text-xs font-semibold text-gray-500 uppercase mb-2">Preset Wallpapers</p>
               <div className="grid grid-cols-2 gap-2">
-                <button onClick={() => setPresetWallpaper("")} className="h-16 bg-[#f7faf8] rounded-xl border border-gray-200 flex items-center justify-center text-xs text-gray-400 hover:border-[#1b6b50]">Default</button>
-                <button onClick={() => setPresetWallpaper("https://images.unsplash.com/photo-1557683316-973673baf926?auto=format&fit=crop&w=400&q=80")} className="h-16 bg-gradient-to-br from-green-300 to-blue-400 rounded-xl bg-cover hover:ring-2 hover:ring-[#1b6b50]" style={{ backgroundImage: "url('https://images.unsplash.com/photo-1557683316-973673baf926?auto=format&fit=crop&w=400&q=80')" }} />
-                <button onClick={() => setPresetWallpaper("https://images.unsplash.com/photo-1579546929518-9e396f3cc809?auto=format&fit=crop&w=400&q=80")} className="h-16 bg-gradient-to-r from-red-200 to-red-600 rounded-xl bg-cover hover:ring-2 hover:ring-[#1b6b50]" style={{ backgroundImage: "url('https://images.unsplash.com/photo-1579546929518-9e396f3cc809?auto=format&fit=crop&w=400&q=80')" }} />
-                <button onClick={() => setPresetWallpaper("https://images.unsplash.com/photo-1519681393784-d120267933ba?auto=format&fit=crop&w=400&q=80")} className="h-16 bg-black rounded-xl bg-cover hover:ring-2 hover:ring-[#1b6b50]" style={{ backgroundImage: "url('https://images.unsplash.com/photo-1519681393784-d120267933ba?auto=format&fit=crop&w=400&q=80')" }} />
+                <button onClick={() => { updateWallpaper(""); setShowWallpaperModal(false); }} className="h-16 bg-[#f7faf8] rounded-xl border border-gray-200 text-xs text-gray-400 hover:border-[#1b6b50]">Default</button>
+                {[
+                  "https://images.unsplash.com/photo-1557683316-973673baf926?auto=format&fit=crop&w=400&q=80",
+                  "https://images.unsplash.com/photo-1579546929518-9e396f3cc809?auto=format&fit=crop&w=400&q=80",
+                  "https://images.unsplash.com/photo-1519681393784-d120267933ba?auto=format&fit=crop&w=400&q=80",
+                ].map((url) => (
+                  <button key={url} onClick={() => { updateWallpaper(url); setShowWallpaperModal(false); }}
+                    className="h-16 rounded-xl bg-cover hover:ring-2 hover:ring-[#1b6b50] border border-gray-100"
+                    style={{ backgroundImage: `url('${url}')` }}
+                  />
+                ))}
               </div>
             </div>
-
             <div>
               <p className="text-xs font-semibold text-gray-500 uppercase mb-2">Custom</p>
-              <label className="flex items-center justify-center w-full h-10 bg-[#1b6b50] text-white text-sm font-medium rounded-xl hover:bg-[#155840] cursor-pointer transition-colors">
+              <label className="flex items-center justify-center w-full h-10 bg-[#1b6b50] text-white text-sm font-medium rounded-xl hover:bg-[#155840] cursor-pointer">
                 Upload from Device
                 <input type="file" accept="image/*" onChange={handleFileUpload} className="hidden" />
               </label>

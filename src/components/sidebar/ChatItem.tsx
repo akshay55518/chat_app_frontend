@@ -1,21 +1,46 @@
-import type { Chat } from "../../data/chats";
+import { useAuth } from "../../context/AuthContext";
+import type { Conversation } from "../../types/api";
 
 interface Props {
-  chat: Chat;
+  conversation: Conversation;
   active: boolean;
   onClick: () => void;
 }
 
-const avatarColors: Record<string, string> = {
-  blue: "bg-blue-100 text-blue-700",
-  pink: "bg-pink-100 text-pink-700",
-};
+// Get a display name for a conversation from the participant list
+export function getConversationName(conv: Conversation, myEmail: string | undefined): string {
+  if (conv.type === "group" && conv.name) return conv.name;
+  const other = conv.participants.find((p) => p.user !== myEmail);
+  return other ? other.user.split("@")[0] : "Unknown";
+}
 
-export default function ChatItem({ chat, active, onClick }: Props) {
-  const colorClass =
-    chat.avatarColor && avatarColors[chat.avatarColor]
-      ? avatarColors[chat.avatarColor]
-      : "bg-[#c9e8dc] text-[#1b6b50]";
+export function getInitials(name: string): string {
+  return name
+    .split(/[\s@]/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((n) => n[0])
+    .join("")
+    .toUpperCase();
+}
+
+const AVATAR_COLORS = [
+  "bg-[#c9e8dc] text-[#1b6b50]",
+  "bg-blue-100 text-blue-700",
+  "bg-pink-100 text-pink-700",
+  "bg-purple-100 text-purple-700",
+  "bg-amber-100 text-amber-700",
+];
+
+function colorForId(id: number) {
+  return AVATAR_COLORS[id % AVATAR_COLORS.length];
+}
+
+export default function ChatItem({ conversation, active, onClick }: Props) {
+  const { user } = useAuth();
+  const name = getConversationName(conversation, user?.email);
+  const initials = getInitials(name);
+  const colorClass = colorForId(conversation.id);
 
   return (
     <div
@@ -27,28 +52,22 @@ export default function ChatItem({ chat, active, onClick }: Props) {
       }`}
     >
       <div className="relative flex-shrink-0">
-        <div
-          className={`w-11 h-11 rounded-full flex items-center justify-center font-semibold text-sm ${colorClass}`}
-        >
-          {chat.initials}
+        <div className={`w-11 h-11 rounded-full flex items-center justify-center font-semibold text-sm ${colorClass}`}>
+          {initials}
         </div>
-        {chat.online && (
-          <span className="absolute bottom-0.5 right-0.5 w-2.5 h-2.5 bg-green-500 rounded-full border-2 border-[#eef2f0]" />
-        )}
       </div>
 
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-gray-900">{chat.name}</p>
-        <p className="text-xs text-gray-500 truncate mt-0.5">{chat.lastMessage}</p>
+        <p className="text-sm font-medium text-gray-900 truncate">{name}</p>
+        <p className="text-xs text-gray-500 truncate mt-0.5">
+          {conversation.type === "group" ? `${conversation.participants.length} members` : "Tap to chat"}
+        </p>
       </div>
 
       <div className="flex flex-col items-end gap-1">
-        <span className="text-[11px] text-gray-400">{chat.time}</span>
-        {chat.unread ? (
-          <span className="bg-[#1b6b50] text-white text-[11px] font-semibold px-1.5 py-0.5 rounded-full leading-none">
-            {chat.unread}
-          </span>
-        ) : null}
+        <span className="text-[11px] text-gray-400">
+          {new Date(conversation.created_at).toLocaleDateString([], { month: "short", day: "numeric" })}
+        </span>
       </div>
     </div>
   );

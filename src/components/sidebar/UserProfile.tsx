@@ -1,3 +1,5 @@
+import { useAuth } from "../../context/AuthContext";
+
 interface Props {
     onOpen: () => void;
 }
