@@ -2,11 +2,12 @@ import { useState } from "react";
 
 interface Props {
   onSend?: (text: string) => void;
+  onSendImage?: (file: File) => void;
 }
 
 const EMOJI_LIST = ["😀", "😂", "🥰", "😎", "🤔", "👍", "❤️", "🔥", "✨", "🙌", "🎉", "😢"];
 
-export default function MessageInput({ onSend }: Props) {
+export default function MessageInput({ onSend, onSendImage }: Props) {
   const [text, setText] = useState("");
   const [showMedia, setShowMedia] = useState(false);
   const [showEmoji, setShowEmoji] = useState(false);
@@ -27,19 +28,21 @@ export default function MessageInput({ onSend }: Props) {
       {/* Media Popover Menu */}
       {showMedia && (
         <div className="absolute bottom-full left-3 mb-2 w-48 bg-white rounded-2xl shadow-[0_4px_20px_-4px_rgba(0,0,0,0.1)] border border-gray-100 py-2 flex flex-col z-50 transform origin-bottom-left animate-in fade-in zoom-in-95 duration-200">
-          {[
-            { icon: "📄", label: "Document" },
-            { icon: "🖼️", label: "Gallery" }
-          ].map((item) => (
-            <button
-              key={item.label}
-              onClick={() => setShowMedia(false)}
-              className="px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-3 w-full text-left transition-colors"
-            >
-              <span className="text-xl leading-none">{item.icon}</span>
-              <span className="font-medium">{item.label}</span>
-            </button>
-          ))}
+          <label className="px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-3 w-full text-left transition-colors cursor-pointer">
+            <span className="text-xl leading-none">🖼️</span>
+            <span className="font-medium">Upload Image</span>
+            <input
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file && onSendImage) onSendImage(file);
+                setShowMedia(false);
+                e.currentTarget.value = "";
+              }}
+            />
+          </label>
         </div>
       )}
 

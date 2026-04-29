@@ -32,7 +32,7 @@ export default function Sidebar({
 
       {/* Tabs */}
       <div className="flex px-3 gap-1 border-b border-gray-200">
-        {["Chats", "Contacts", "Calls"].map((tab, i) => (
+        {["Chats"].map((tab, i) => (
           <button
             key={tab}
             className={`px-3 py-2 text-sm pb-2 border-b-2 -mb-px transition-colors ${

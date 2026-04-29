@@ -19,8 +19,9 @@ export interface ApiMessage {
   id: number;
   conversation: number;
   sender: string; // email
-  type: 'text' | 'image' | 'audio';
+  type: 'text' | 'image' | 'audio' | 'file';
   content: string;
   media_url: string | null;
+  image_url?: string | null;
   created_at: string;
 }

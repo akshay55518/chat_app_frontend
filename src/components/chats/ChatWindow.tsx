@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useAuth } from "../../context/AuthContext";
 import { API_ENDPOINTS } from "../../config/api";
 import type { ApiMessage, Conversation } from "../../types/api";
@@ -92,9 +92,10 @@ export default function ChatWindow({ conversation, onOpenProfile }: Props) {
           id: data.message_id || Date.now(),
           conversation: convId,
           sender: data.user,
-          type: "text",
-          content: data.message,
-          media_url: null,
+          type: data.message_type || "text",
+          content: data.message || "",
+          media_url: data.image_url || null,
+          image_url: data.image_url || null,
           created_at: data.created_at || new Date().toISOString(),
         };
         // Update messages state
@@ -117,12 +118,104 @@ export default function ChatWindow({ conversation, onOpenProfile }: Props) {
 
     console.log("[UI SENDING]", text);
 
-    // Broadcast via WebSocket for real-time and persistence
+    const payload = { content: text };
+
+    // Prefer WebSocket for real-time and persistence
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({ message: text }));
     } else {
-      console.error("[WS ERROR] Socket not open");
-      // Optional: Add local error feedback here
+      // Fallback to REST so send still works even if WS is disconnected
+      try {
+        const res = await fetch(API_ENDPOINTS.SEND_MESSAGE(conversation.id), {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(payload),
+        });
+        if (!res.ok) {
+          throw new Error("REST send failed");
+        }
+        const savedMsg: ApiMessage = await res.json();
+        setMessages((prev) => {
+          if (prev.some((m) => m.id === savedMsg.id)) return prev;
+          return [...prev, savedMsg];
+        });
+      } catch (err) {
+        console.error("Failed to send message", err);
+      }
+    }
+  };
+
+  const uploadImageToCloudinary = async (file: File): Promise<string> => {
+    const cloudName = (import.meta.env.VITE_CLOUDINARY_CLOUD_NAME || "").trim();
+    const uploadPreset = (import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET || "").trim();
+
+    if (!cloudName || cloudName === "your_cloudinary_cloud_name") {
+      throw new Error("Missing VITE_CLOUDINARY_CLOUD_NAME.");
+    }
+    if (!uploadPreset || uploadPreset === "your_unsigned_preset_name") {
+      throw new Error("Missing VITE_CLOUDINARY_UPLOAD_PRESET.");
+    }
+
+    const form = new FormData();
+    form.append("file", file);
+    form.append("upload_preset", uploadPreset);
+
+    const uploadRes = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, {
+      method: "POST",
+      body: form,
+    });
+
+    if (!uploadRes.ok) {
+      let detail = "";
+      try {
+        const errData = await uploadRes.json();
+        detail = errData?.error?.message || "";
+      } catch {}
+      throw new Error(`Cloudinary upload failed (${uploadRes.status}). ${detail}`.trim());
+    }
+
+    const uploadData = await uploadRes.json();
+    if (!uploadData?.secure_url) {
+      throw new Error("Cloudinary response did not include secure_url.");
+    }
+    return uploadData.secure_url;
+  };
+
+  const handleSendImage = async (file: File) => {
+    if (!conversation || !token) return;
+    try {
+      const imageUrl = await uploadImageToCloudinary(file);
+      if (wsRef.current?.readyState === WebSocket.OPEN) {
+        wsRef.current.send(
+          JSON.stringify({
+            type: "message",
+            message: "",
+            image_url: imageUrl,
+          })
+        );
+      } else {
+        const res = await fetch(API_ENDPOINTS.SEND_MESSAGE(conversation.id), {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ content: "", image_url: imageUrl }),
+        });
+        if (!res.ok) throw new Error("REST image send failed");
+        const savedMsg: ApiMessage = await res.json();
+        setMessages((prev) => {
+          if (prev.some((m) => m.id === savedMsg.id)) return prev;
+          return [...prev, savedMsg];
+        });
+      }
+    } catch (err) {
+      console.error("Failed to upload/send image", err);
+      const message = err instanceof Error ? err.message : "Unknown upload error";
+      alert(`Image upload failed: ${message}`);
     }
   };
 
@@ -198,7 +291,7 @@ export default function ChatWindow({ conversation, onOpenProfile }: Props) {
         <div ref={bottomRef} />
       </div>
 
-      <MessageInput onSend={handleSend} />
+      <MessageInput onSend={handleSend} onSendImage={handleSendImage} />
 
       {/* Wallpaper Modal */}
       {showWallpaperModal && (

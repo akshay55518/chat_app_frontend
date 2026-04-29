@@ -147,7 +147,7 @@ export default function NewChatModal({ onClose, onSelectUser, isCreating }: Prop
 
         {/* Footer */}
         <div className="px-5 py-3 bg-white border-t border-gray-200 text-center">
-          <p className="text-[11px] font-medium text-gray-400 uppercase tracking-widest">Pristine Chat Ecosystem</p>
+          <p className="text-[11px] font-medium text-gray-400 tracking-widest"> <span className="text-black font-bold uppercase">{user?.full_name}</span> Chat Ecosystem</p>
         </div>
 
         {/* Overlay Loading for Selection */}

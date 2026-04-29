@@ -30,7 +30,15 @@ export default function MessageBubble({ msg, senderInitials }: Props) {
               : "bg-[#eeeeee] text-gray-900 rounded-2xl rounded-bl-sm"
           }`}
         >
-          {msg.content}
+          {msg.type === "image" && (msg.image_url || msg.media_url) ? (
+            <img
+              src={msg.image_url || msg.media_url || ""}
+              alt="Shared"
+              className="max-w-64 rounded-lg"
+            />
+          ) : (
+            msg.content
+          )}
         </div>
         <span className="text-[11px] text-gray-400 mt-1">{time}</span>
       </div>
